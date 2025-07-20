@@ -14,27 +14,34 @@ st.set_page_config(page_title="AI Aqua Risk System", layout="wide")
 # Custom CSS for full background and sidebar
 st.markdown("""
     <style>
-        /* Page background */
+        /* Full App Background */
         .stApp {
             background-image: url("https://images.unsplash.com/photo-1507525428034-b723cf961d3e");
             background-size: cover;
             background-attachment: fixed;
         }
 
-        /* Sidebar background */
+        /* Sidebar Background */
         [data-testid="stSidebar"] {
             background-image: url("https://images.unsplash.com/photo-1519638399535-1b036603ac77");
             background-size: cover;
+            background-position: center;
             color: white;
         }
 
-        /* Input & Label styling inside sidebar */
+        /* Input Fields Styling */
         [data-testid="stSidebar"] input,
         [data-testid="stSidebar"] textarea {
             background-color: rgba(255, 255, 255, 0.1);
             color: white !important;
-            border: 1px solid white;
+            border: 1px solid #ffffffcc;
             border-radius: 5px;
+            font-weight: bold;
+        }
+
+        /* Fix Placeholder Visibility */
+        [data-testid="stSidebar"] input::placeholder {
+            color: #cccccc !important;
         }
 
         [data-testid="stSidebar"] label {
@@ -48,7 +55,7 @@ st.markdown("""
             border: 1px solid white;
         }
 
-        /* Sidebar buttons */
+        /* Sidebar Buttons */
         .stButton > button {
             color: white;
             background-color: #006699;
@@ -58,12 +65,12 @@ st.markdown("""
             border: none;
         }
 
-        /* Welcome banner */
+        /* Welcome Banner */
         .welcome-banner {
             font-size: 30px;
             padding: 10px;
             text-align: center;
-            background-color: #ffffff99;
+            background-color: #ffffffcc;
             border-radius: 10px;
             font-weight: bold;
             color: #003366;
