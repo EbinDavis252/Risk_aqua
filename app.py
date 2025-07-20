@@ -1,163 +1,173 @@
 import streamlit as st
-import pandas as pd
 import os
-import sqlite3
+import pandas as pd
+import joblib
+import hashlib
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import classification_report
-import joblib
 
-# ---------- Database & Auth Setup ----------
-conn = sqlite3.connect("users.db")
-c = conn.cursor()
-c.execute('''CREATE TABLE IF NOT EXISTS users (username TEXT PRIMARY KEY, password TEXT)''')
-conn.commit()
-
-def save_uploaded_file(uploadedfile, username, filename):
-    user_dir = os.path.join("userdata", username)
-    os.makedirs(user_dir, exist_ok=True)
-    filepath = os.path.join(user_dir, filename)
-    with open(filepath, "wb") as f:
-        f.write(uploadedfile.getbuffer())
-    return filepath
-
-# ---------- Streamlit Page Config ----------
-st.set_page_config(page_title="Aqua Risk Assessment", layout="wide")
-
-# ---------- Custom Sidebar Styling ----------
+# --- Styling the sidebar ---
 sidebar_style = """
-    <style>
-    [data-testid="stSidebar"] {
-        background-image: linear-gradient(to bottom, #003366, #004080);
-        color: white;
-    }
-    [data-testid="stSidebar"] * {
-        color: white !important;
-        font-family: 'Segoe UI', sans-serif !important;
-    }
-    </style>
+<style>
+[data-testid="stSidebar"] {
+    background: linear-gradient(to bottom, #003366, #004080);
+    padding: 2rem 1rem;
+}
+[data-testid="stSidebar"] * {
+    color: #ffcc00 !important;
+    font-family: 'Segoe UI', sans-serif !important;
+}
+section[data-testid="stSidebar"] input {
+    background-color: white !important;
+    color: black !important;
+    border-radius: 5px !important;
+}
+section[data-testid="stSidebar"] button {
+    background-color: #0066cc !important;
+    color: white !important;
+    font-weight: bold;
+    border-radius: 5px !important;
+    padding: 0.4rem 1rem;
+}
+</style>
 """
 st.markdown(sidebar_style, unsafe_allow_html=True)
 
-# ---------- Session State ----------
-if "authenticated" not in st.session_state:
-    st.session_state.authenticated = False
-if "username" not in st.session_state:
-    st.session_state.username = None
+# --- Functions ---
+def hash_password(password):
+    return hashlib.sha256(password.encode()).hexdigest()
 
-# ---------- Registration/Login ----------
-menu = st.sidebar.radio("Login / Register", ["Login", "Register"])
+def save_user(username, password):
+    with open("users.csv", "a") as f:
+        f.write(f"{username},{hash_password(password)}\n")
 
-if menu == "Register":
+def validate_user(username, password):
+    if not os.path.exists("users.csv"):
+        return False
+    hashed = hash_password(password)
+    with open("users.csv", "r") as f:
+        for line in f:
+            u, p = line.strip().split(",")
+            if u == username and p == hashed:
+                return True
+    return False
+
+def save_uploaded_file(uploaded_file, username, prefix):
+    user_dir = f"userdata/{username}"
+    os.makedirs(user_dir, exist_ok=True)
+    file_path = os.path.join(user_dir, f"{prefix}_{uploaded_file.name}")
+    with open(file_path, "wb") as f:
+        f.write(uploaded_file.getbuffer())
+    return file_path
+
+# --- App title ---
+st.title("🐟 AI-Driven Aqua Loan Risk Assessment Dashboard")
+
+# --- Login/Register System ---
+auth_status = False
+menu = ["Login", "Register"]
+choice = st.sidebar.selectbox("Login / Register", menu)
+
+if choice == "Register":
     st.sidebar.subheader("Create New Account")
-    new_user = st.sidebar.text_input("Username")
-    new_pass = st.sidebar.text_input("Password", type="password")
+    new_user = st.sidebar.text_input("New Username")
+    new_pass = st.sidebar.text_input("New Password", type='password')
     if st.sidebar.button("Register"):
-        c.execute("SELECT * FROM users WHERE username=?", (new_user,))
-        if c.fetchone():
-            st.sidebar.warning("Username already exists.")
-        else:
-            c.execute("INSERT INTO users VALUES (?, ?)", (new_user, new_pass))
-            conn.commit()
-            st.sidebar.success("Registration successful! Please log in.")
+        save_user(new_user, new_pass)
+        st.sidebar.success("Registered! Please login.")
 
-elif menu == "Login":
-    st.sidebar.subheader("Login to your account")
-    user = st.sidebar.text_input("Username")
-    passwd = st.sidebar.text_input("Password", type="password")
+if choice == "Login":
+    st.sidebar.subheader("Login to Continue")
+    username = st.sidebar.text_input("Username")
+    password = st.sidebar.text_input("Password", type='password')
     if st.sidebar.button("Login"):
-        c.execute("SELECT * FROM users WHERE username=? AND password=?", (user, passwd))
-        if c.fetchone():
-            st.session_state.authenticated = True
-            st.session_state.username = user
-            st.sidebar.success(f"Welcome, {user}!")
+        if validate_user(username, password):
+            st.session_state['username'] = username
+            st.success(f"Welcome {username}!")
+            auth_status = True
         else:
-            st.sidebar.error("Invalid username or password.")
+            st.error("Invalid credentials")
 
-# ---------- Main App ----------
-if st.session_state.authenticated:
-    st.title("🌊 AI-Driven Risk Assessment System for Aqua Loan Providers")
-
-    tab = st.sidebar.radio("Choose Analysis Section", ["📉 Risk Assessment", "💧 Water Quality", "🔗 Combined Analysis"])
+# --- If Authenticated ---
+if 'username' in st.session_state:
+    username = st.session_state['username']
+    tab = st.sidebar.radio("Select Section", ["📉 Risk Assessment", "🌊 Water Quality", "🧪 Combined Analysis"])
 
     if tab == "📉 Risk Assessment":
-        st.header("Loan Default Risk Prediction")
-        uploaded_file = st.file_uploader("Upload Loan Dataset (.csv)", type=["csv"], key="loan_file")
-        if uploaded_file:
-            file_path = save_uploaded_file(uploaded_file, st.session_state.username, "loan_data.csv")
-            loan_df = pd.read_csv(file_path)
+        st.header("📉 Loan Default Risk Prediction")
 
+        uploaded_loan = st.file_uploader("Upload Loan Dataset", type=["csv"], key="loan_upload")
+        if uploaded_loan:
+            path = save_uploaded_file(uploaded_loan, username, "loan")
+            df_loan = pd.read_csv(path)
+            st.dataframe(df_loan.head())
+
+            # Train model on uploaded data
             try:
-                X = loan_df[['loan_amount', 'loan_term', 'emi_paid', 'emi_missed', 'age', 'credit_score', 'income']]
-                y = loan_df['defaulted']
+                X = df_loan[['loan_amount', 'loan_term', 'emi_paid', 'emi_missed', 'age', 'credit_score', 'income']]
+                y = df_loan['default']
+                model = RandomForestClassifier()
+                model.fit(X, y)
+                df_loan["default_probability"] = model.predict_proba(X)[:,1]
+                st.success("Model trained and predictions added!")
+                st.dataframe(df_loan[['loan_amount', 'default_probability']].head())
+            except KeyError as e:
+                st.error(f"Missing columns: {e}")
 
-                X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42)
-                model = RandomForestClassifier().fit(X_train, y_train)
-                preds = model.predict(X_test)
+    elif tab == "🌊 Water Quality":
+        st.header("🌊 Water Quality Risk (Farm Failure)")
 
-                st.subheader("Classification Report")
-                st.text(classification_report(y_test, preds))
-                joblib.dump(model, os.path.join("userdata", st.session_state.username, "loan_model.pkl"))
-
-            except Exception as e:
-                st.error(f"Error processing loan data: {e}")
-
-    elif tab == "💧 Water Quality":
-        st.header("Fish Farm Failure Prediction")
-        uploaded_sensor = st.file_uploader("Upload Sensor Dataset (.csv)", type=["csv"], key="sensor_file")
+        uploaded_sensor = st.file_uploader("Upload Sensor Data", type=["csv"], key="sensor_upload")
         if uploaded_sensor:
-            file_path = save_uploaded_file(uploaded_sensor, st.session_state.username, "sensor_data.csv")
-            sensor_df = pd.read_csv(file_path)
+            path = save_uploaded_file(uploaded_sensor, username, "sensor")
+            df_sensor = pd.read_csv(path)
+            st.dataframe(df_sensor.head())
+
+            # Train model on uploaded sensor data
             try:
-                sensor_df.columns = [col.strip().lower() for col in sensor_df.columns]
-                required_cols = ['temp', 'ph', 'do', 'ammonia', 'mortality']
+                X = df_sensor[['temp', 'ph', 'do', 'ammonia']]
+                y = df_sensor['mortality']
+                model = RandomForestClassifier()
+                model.fit(X, y)
+                df_sensor["failure_risk"] = model.predict_proba(X)[:,1]
+                st.success("Farm failure risk predicted.")
+                st.dataframe(df_sensor[['ph', 'ammonia', 'failure_risk']].head())
+            except KeyError as e:
+                st.error(f"Missing columns: {e}")
 
-                if all(col in sensor_df.columns for col in required_cols):
-                    X = sensor_df[['temp', 'ph', 'do', 'ammonia']]
-                    y = sensor_df['mortality']
+    elif tab == "🧪 Combined Analysis":
+        st.header("🧪 Combined Loan & Water Risk Analysis")
 
-                    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42)
-                    model = RandomForestClassifier().fit(X_train, y_train)
-                    preds = model.predict(X_test)
+        uploaded_loan = st.file_uploader("Upload Loan Dataset", type=["csv"], key="combo_loan")
+        uploaded_sensor = st.file_uploader("Upload Sensor Dataset", type=["csv"], key="combo_sensor")
 
-                    st.subheader("Classification Report")
-                    st.text(classification_report(y_test, preds))
-                    joblib.dump(model, os.path.join("userdata", st.session_state.username, "sensor_model.pkl"))
-                else:
-                    st.error(f"CSV must include: {required_cols}")
-            except Exception as e:
-                st.error(f"Error processing sensor data: {e}")
+        if uploaded_loan and uploaded_sensor:
+            path1 = save_uploaded_file(uploaded_loan, username, "combo_loan")
+            path2 = save_uploaded_file(uploaded_sensor, username, "combo_sensor")
 
-    elif tab == "🔗 Combined Analysis":
-        st.header("Combined Risk Prediction (Loan + Sensor)")
-        loan_file = st.file_uploader("Upload Loan Dataset (.csv)", type=["csv"], key="combo_loan")
-        sensor_file = st.file_uploader("Upload Sensor Dataset (.csv)", type=["csv"], key="combo_sensor")
+            df_loan = pd.read_csv(path1)
+            df_sensor = pd.read_csv(path2)
 
-        if loan_file and sensor_file:
             try:
-                loan_df = pd.read_csv(loan_file)
-                sensor_df = pd.read_csv(sensor_file)
-                sensor_df.columns = [col.strip().lower() for col in sensor_df.columns]
+                X_loan = df_loan[['loan_amount', 'loan_term', 'emi_paid', 'emi_missed', 'age', 'credit_score', 'income']]
+                y_loan = df_loan['default']
+                model_loan = RandomForestClassifier()
+                model_loan.fit(X_loan, y_loan)
+                loan_probs = model_loan.predict_proba(X_loan)[:,1]
 
-                # Match and combine datasets by row
-                loan_df = loan_df.reset_index(drop=True)
-                sensor_df = sensor_df.reset_index(drop=True)
-                combined_df = pd.concat([loan_df, sensor_df], axis=1)
+                X_sensor = df_sensor[['temp', 'ph', 'do', 'ammonia']]
+                y_sensor = df_sensor['mortality']
+                model_sensor = RandomForestClassifier()
+                model_sensor.fit(X_sensor, y_sensor)
+                farm_probs = model_sensor.predict_proba(X_sensor)[:,1]
 
-                st.write("🔍 Combined Data Preview:")
-                st.dataframe(combined_df.head())
+                df_combined = pd.DataFrame({
+                    "loan_default_prob": loan_probs[:len(farm_probs)],
+                    "farm_failure_prob": farm_probs
+                })
+                df_combined["combined_risk"] = (df_combined["loan_default_prob"] + df_combined["farm_failure_prob"]) / 2
 
-                X = combined_df[['loan_amount', 'loan_term', 'emi_paid', 'emi_missed', 'age', 'credit_score', 'income', 'temp', 'ph', 'do', 'ammonia']]
-                y = combined_df['defaulted']
-
-                X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42)
-                model = RandomForestClassifier().fit(X_train, y_train)
-                preds = model.predict(X_test)
-
-                st.subheader("Combined Classification Report")
-                st.text(classification_report(y_test, preds))
-
-            except Exception as e:
-                st.error(f"Error during combined analysis: {e}")
-else:
-    st.warning("Please login or register to access the dashboard.")
+                st.success("Combined risk score generated.")
+                st.dataframe(df_combined.head())
+            except KeyError as e:
+                st.error(f"Missing columns in datasets: {e}")
