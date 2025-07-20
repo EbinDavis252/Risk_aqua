@@ -1,117 +1,95 @@
 import streamlit as st
-import sqlite3
-import os
 import pandas as pd
+import os
+import sqlite3
 import plotly.express as px
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import classification_report
 import joblib
+from sklearn.model_selection import train_test_split
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import classification_report
+from fpdf import FPDF
+import smtplib
+from email.message import EmailMessage
+from datetime import datetime
 
-# ---------------------------- PAGE SETUP ----------------------------
-st.set_page_config(page_title="AI Aqua Risk System", layout="wide")
+# --------------- Config -------------------
+st.set_page_config(layout="wide", page_title="Aqua Finance AI System")
 
-# Custom CSS for full background and sidebar
-st.markdown("""
-    <style>
-        /* Page background */
-        .stApp {
-            background-image: url("https://images.unsplash.com/photo-1507525428034-b723cf961d3e");
-            background-size: cover;
-            background-attachment: fixed;
-        }
-
-        /* Sidebar styling */
-        [data-testid="stSidebar"] {
-            background-image: url("https://images.unsplash.com/photo-1519638399535-1b036603ac77");
-            background-size: cover;
-            color: white;
-        }
-
-        /* Sidebar elements */
-        [data-testid="stSidebar"] * {
-            color: white;
-            font-weight: bold;
-        }
-
-        .css-1aumxhk {
-            background-color: rgba(0,0,0,0.5);
-            border-radius: 10px;
-        }
-
-        /* Stylish button */
-        .stButton > button {
-            color: white;
-            background-color: #006699;
-            border-radius: 10px;
-            padding: 10px 24px;
-            font-weight: bold;
-        }
-
-        /* Welcome banner */
-        .welcome-banner {
-            font-size: 30px;
-            padding: 10px;
-            text-align: center;
-            background-color: #ffffff99;
-            border-radius: 10px;
-            font-weight: bold;
-            color: #003366;
-        }
-    </style>
-""", unsafe_allow_html=True)
-
-# ---------------------------- DATABASE SETUP ----------------------------
-conn = sqlite3.connect("users.db", check_same_thread=False)
-cursor = conn.cursor()
-cursor.execute('''
-    CREATE TABLE IF NOT EXISTS users (
-        username TEXT PRIMARY KEY,
-        password TEXT
-    )
-''')
-conn.commit()
-
-# Create upload directory
+# Create data directory if not exists
 if not os.path.exists("saved_user_data"):
     os.makedirs("saved_user_data")
 
-# ---------------------------- SIDEBAR LOGIN ----------------------------
-st.sidebar.image("https://cdn-icons-png.flaticon.com/512/2798/2798007.png", width=80)
-st.sidebar.title("🌊 Aqua Risk System")
+# Create user db
+conn = sqlite3.connect("users.db", check_same_thread=False)
+cursor = conn.cursor()
+cursor.execute('''CREATE TABLE IF NOT EXISTS users (username TEXT PRIMARY KEY, password TEXT)''')
+conn.commit()
 
-auth_option = st.sidebar.selectbox("Login/Register", ["Login", "Register"])
+# --------------- Stylish Sidebar + Banner -------------------
+st.markdown("""
+    <style>
+    [data-testid="stSidebar"] {
+        background-image: linear-gradient(#001f3f, #003366);
+        color: white;
+    }
+    .main {
+        background: linear-gradient(135deg, #dff6f0 10%, #ffffff 90%);
+        font-family: 'Arial Rounded MT Bold';
+    }
+    .welcome-banner {
+        padding: 10px;
+        background-color: #004080;
+        color: white;
+        font-size: 22px;
+        text-align: center;
+        border-radius: 8px;
+    }
+    </style>
+""", unsafe_allow_html=True)
+
+st.sidebar.image("https://upload.wikimedia.org/wikipedia/commons/3/3f/Water_icon.svg", width=80)
+st.sidebar.title("🌊 Aqua Finance Risk App")
+
+# --------------- Login / Register -------------------
+auth = st.sidebar.selectbox("🔐 Authentication", ["Login", "Register"])
 username = st.sidebar.text_input("👤 Username")
 password = st.sidebar.text_input("🔒 Password", type="password")
 
-def register_user():
+def register():
     cursor.execute("SELECT * FROM users WHERE username=?", (username,))
     if cursor.fetchone():
         st.sidebar.error("Username already exists.")
     else:
-        cursor.execute("INSERT INTO users VALUES (?, ?)", (username, password))
+        cursor.execute("INSERT INTO users VALUES (?,?)", (username, password))
         conn.commit()
-        st.sidebar.success("Registered successfully. Please log in.")
+        st.sidebar.success("Registered successfully!")
 
-def login_user():
+def login():
     cursor.execute("SELECT * FROM users WHERE username=? AND password=?", (username, password))
-    return cursor.fetchone() is not None
+    return cursor.fetchone()
 
-if auth_option == "Register":
+if auth == "Register":
     if st.sidebar.button("Register"):
-        register_user()
+        register()
     st.stop()
 
-if not login_user():
-    st.sidebar.warning("Login to Continue")
+if not login():
+    st.sidebar.warning("Login to continue")
     st.stop()
 
-# ---------------------------- AFTER LOGIN ----------------------------
-st.markdown(f"""<div class="welcome-banner">👋 Welcome, <span style="color:#004488">{username}</span>!</div>""", unsafe_allow_html=True)
-section = st.sidebar.radio("📁 Select Section", ["🔴 Risk Assessment", "🔵 Water Quality", "🟢 Combined Analysis"])
+# Show welcome banner
+st.markdown(f"<div class='welcome-banner'>👋 Welcome, {username}!</div>", unsafe_allow_html=True)
 st.markdown("---")
 
-# ---------------------------- HELPER FUNCTION ----------------------------
+# --------------- Navigation Tabs -------------------
+tabs = st.sidebar.radio("📁 Navigate", [
+    "🔴 Risk Assessment", 
+    "🔵 Water Quality", 
+    "🟢 Combined Analysis", 
+    "📧 Export & Email Report"
+])
+
+# --------------- Data Handling -------------------
 def load_data(file, name):
     if file:
         df = pd.read_csv(file)
@@ -120,77 +98,118 @@ def load_data(file, name):
         return df
     elif os.path.exists(f"saved_user_data/{username}_{name}.csv"):
         return pd.read_csv(f"saved_user_data/{username}_{name}.csv")
-    else:
-        return None
+    return None
 
-# ---------------------------- SECTION 1: RISK ASSESSMENT ----------------------------
-if section == "🔴 Risk Assessment":
-    st.header("📊 Loan Default Risk Assessment")
-    risk_file = st.file_uploader("Upload Farmer Loan Dataset", type=["csv"], key="risk_upload")
-    risk_df = load_data(risk_file, "risk")
+# --------------- Risk Assessment -------------------
+if tabs == "🔴 Risk Assessment":
+    st.subheader("📊 Loan Risk Assessment")
+    file = st.file_uploader("Upload Risk Dataset", type=["csv"], key="risk")
+    df = load_data(file, "risk")
 
-    if risk_df is not None:
-        st.subheader("🔍 Preview")
-        st.dataframe(risk_df.head())
+    if df is not None:
+        st.dataframe(df.head())
+        if 'loan_amount' in df.columns and 'default' in df.columns:
+            fig = px.histogram(df, x="loan_amount", color="default")
+            st.plotly_chart(fig)
 
-        if 'loan_amount' in risk_df.columns and 'default' in risk_df.columns:
-            fig = px.histogram(risk_df, x="loan_amount", color="default", title="Loan Amount vs Default")
-            st.plotly_chart(fig, use_container_width=True)
-
-        if 'default' in risk_df.columns:
-            X = risk_df.drop("default", axis=1).select_dtypes(include='number')
-            y = risk_df['default']
-            X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2)
+        if 'default' in df.columns:
+            X = df.drop("default", axis=1).select_dtypes(include='number')
+            y = df['default']
+            X_train, X_test, y_train, y_test = train_test_split(X, y)
             model = RandomForestClassifier().fit(X_train, y_train)
             preds = model.predict(X_test)
-            st.text("📈 Classification Report:")
-            st.text(classification_report(y_test, preds))
+            st.text("Model Results:\n" + classification_report(y_test, preds))
             joblib.dump(model, "risk_model.pkl")
-            st.success("✅ Model Trained Successfully!")
+            st.success("✅ Model Trained")
 
-# ---------------------------- SECTION 2: WATER QUALITY ----------------------------
-elif section == "🔵 Water Quality":
-    st.header("🌊 Water Quality Risk Analysis")
-    water_file = st.file_uploader("Upload Water Quality Dataset", type=["csv"], key="water_upload")
-    water_df = load_data(water_file, "water")
+# --------------- Water Quality -------------------
+elif tabs == "🔵 Water Quality":
+    st.subheader("🌊 Water Quality Monitor")
+    file = st.file_uploader("Upload Water Dataset", type=["csv"], key="water")
+    df = load_data(file, "water")
 
-    if water_df is not None:
-        st.subheader("🔍 Preview")
-        st.dataframe(water_df.head())
+    if df is not None:
+        st.dataframe(df.head())
+        if {'pH', 'ammonia', 'dissolved_oxygen'}.issubset(df.columns):
+            fig = px.scatter_matrix(df, dimensions=['pH', 'ammonia', 'dissolved_oxygen'])
+            st.plotly_chart(fig)
 
-        if {'pH', 'temperature', 'ammonia', 'dissolved_oxygen'}.issubset(water_df.columns):
-            fig = px.scatter_matrix(water_df, dimensions=['pH', 'temperature', 'ammonia', 'dissolved_oxygen'],
-                                    title="Water Parameters Correlation")
-            st.plotly_chart(fig, use_container_width=True)
+            df['risk'] = ((df['pH'] < 6.5) | (df['ammonia'] > 0.5) | (df['dissolved_oxygen'] < 4)).astype(int)
+            st.warning(f"⚠️ {df['risk'].sum()} out of {len(df)} show poor quality")
+            st.info("💡 Suggestion: Check aeration and ammonia levels regularly.")
 
-            water_df['risk'] = ((water_df['pH'] < 6.5) | 
-                                (water_df['ammonia'] > 0.5) | 
-                                (water_df['dissolved_oxygen'] < 4)).astype(int)
-            risky = water_df['risk'].sum()
-            st.warning(f"⚠️ {risky} of {len(water_df)} samples indicate poor water quality.")
-            st.success("💡 Recommendation: Improve aeration and reduce ammonia levels.")
+# --------------- Combined Analysis -------------------
+elif tabs == "🟢 Combined Analysis":
+    st.subheader("🔗 Joint Farm & Water Risk")
+    risk_file = st.file_uploader("Risk Data", type=["csv"], key="comb_risk")
+    water_file = st.file_uploader("Water Data", type=["csv"], key="comb_water")
 
-# ---------------------------- SECTION 3: COMBINED ANALYSIS ----------------------------
-elif section == "🟢 Combined Analysis":
-    st.header("🔗 Combined Risk Analysis")
-    comb_file1 = st.file_uploader("Upload Farmer Dataset", type=["csv"], key="comb_risk")
-    comb_file2 = st.file_uploader("Upload Water Dataset", type=["csv"], key="comb_water")
-    df1 = load_data(comb_file1, "comb_risk")
-    df2 = load_data(comb_file2, "comb_water")
+    df1 = load_data(risk_file, "comb_risk")
+    df2 = load_data(water_file, "comb_water")
 
     if df1 is not None and df2 is not None:
-        st.success("✅ Both datasets loaded.")
-        combined_df = pd.concat([df1.reset_index(drop=True), df2.reset_index(drop=True)], axis=1)
-        st.subheader("🔍 Merged View")
-        st.dataframe(combined_df.head())
+        df = pd.concat([df1.reset_index(drop=True), df2.reset_index(drop=True)], axis=1)
+        st.dataframe(df.head())
 
-        if 'default' in combined_df.columns:
-            X = combined_df.drop("default", axis=1).select_dtypes(include='number')
-            y = combined_df["default"]
-            X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2)
+        if 'default' in df.columns:
+            X = df.drop("default", axis=1).select_dtypes(include='number')
+            y = df['default']
+            X_train, X_test, y_train, y_test = train_test_split(X, y)
             model = RandomForestClassifier().fit(X_train, y_train)
             preds = model.predict(X_test)
-            st.text("📈 Combined Classification Report:")
-            st.text(classification_report(y_test, preds))
-            joblib.dump(model, "combined_model.pkl")
-            st.info("💬 Insight: Risk is highest when water is poor and loan amount is high.")
+            st.text("Model Results:\n" + classification_report(y_test, preds))
+            st.info("📌 Farms with poor water and credit scores are high risk.")
+
+# --------------- Export & Email Report -------------------
+elif tabs == "📧 Export & Email Report":
+    st.subheader("📤 Generate & Email Report")
+
+    df = None
+    path1 = f"saved_user_data/{username}_risk.csv"
+    path2 = f"saved_user_data/{username}_water.csv"
+
+    if os.path.exists(path1):
+        df = pd.read_csv(path1)
+
+    st.write("📁 Data preview")
+    if df is not None:
+        st.dataframe(df.head())
+    else:
+        st.warning("Upload a dataset first in Risk tab.")
+
+    if st.button("📄 Generate PDF Report"):
+        pdf = FPDF()
+        pdf.add_page()
+        pdf.set_font("Arial", "B", 14)
+        pdf.cell(200, 10, "Aqua Finance Report", ln=True, align='C')
+        pdf.set_font("Arial", "", 10)
+        if df is not None:
+            for i, row in df.head(10).iterrows():
+                pdf.cell(200, 8, str(row.values), ln=True)
+        timestamp = datetime.now().strftime("%Y%m%d%H%M")
+        pdf.output(f"report_{username}_{timestamp}.pdf")
+        st.success("✅ Report Saved!")
+
+    email = st.text_input("📧 Enter your email:")
+    if st.button("✉️ Send Email"):
+        try:
+            msg = EmailMessage()
+            msg.set_content("Hi, find your Aqua Finance report attached.")
+            msg['Subject'] = 'Aqua Report'
+            msg['From'] = "your_email@gmail.com"
+            msg['To'] = email
+
+            filename = f"report_{username}_{timestamp}.pdf"
+            with open(filename, 'rb') as f:
+                file_data = f.read()
+            msg.add_attachment(file_data, maintype='application', subtype='pdf', filename=filename)
+
+            # Simulated SMTP - change to real creds for prod
+            # smtp = smtplib.SMTP_SSL('smtp.gmail.com', 465)
+            # smtp.login("your_email@gmail.com", "your_app_password")
+            # smtp.send_message(msg)
+            # smtp.quit()
+
+            st.success("📩 Email simulated (SMTP commented for security)")
+        except Exception as e:
+            st.error(f"❌ Email failed: {e}")
