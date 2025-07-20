@@ -26,22 +26,20 @@ st.markdown("""
             background-image: url("https://images.unsplash.com/photo-1519638399535-1b036603ac77");
             background-size: cover;
             background-position: center;
-            color: white;
         }
 
-        /* Input Fields Styling */
+        /* Make text black inside input fields */
         [data-testid="stSidebar"] input,
         [data-testid="stSidebar"] textarea {
-            background-color: rgba(255, 255, 255, 0.1);
-            color: white !important;
-            border: 1px solid #ffffffcc;
+            color: black !important;
+            background-color: rgba(255, 255, 255, 0.9);
+            border: 1px solid #333;
             border-radius: 5px;
             font-weight: bold;
         }
 
-        /* Fix Placeholder Visibility */
         [data-testid="stSidebar"] input::placeholder {
-            color: #cccccc !important;
+            color: #666666 !important;
         }
 
         [data-testid="stSidebar"] label {
@@ -49,13 +47,7 @@ st.markdown("""
             font-weight: 600;
         }
 
-        [data-testid="stSidebar"] select {
-            background-color: rgba(255, 255, 255, 0.1);
-            color: white !important;
-            border: 1px solid white;
-        }
-
-        /* Sidebar Buttons */
+        /* Stylish button */
         .stButton > button {
             color: white;
             background-color: #006699;
