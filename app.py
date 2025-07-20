@@ -122,11 +122,7 @@ if auth_option == "Register":
 if not login_user():
     st.sidebar.warning("Login to Continue")
     st.stop()
-
-# ---------------------------- AFTER LOGIN ----------------------------
-st.markdown(f"""<div class="welcome-banner">👋 Welcome, <span style="color:#004488">{username}</span>!</div>""", unsafe_allow_html=True)
-section = st.sidebar.radio("📁 Select Section", ["🔴 Risk Assessment", "🔵 Water Quality", "🟢 Combined Analysis"])
-st.markdown("---")
+    
 st.markdown("""
 <div style='
     background-color: rgba(255, 255, 255, 0.85);
@@ -138,6 +134,11 @@ st.markdown("""
 <h1 style='color: #003366; text-align: center;'>🧠 Aqua Risk System Dashboard</h1>
 </div>
 """, unsafe_allow_html=True)
+
+# ---------------------------- AFTER LOGIN ----------------------------
+st.markdown(f"""<div class="welcome-banner">👋 Welcome, <span style="color:#004488">{username}</span>!</div>""", unsafe_allow_html=True)
+section = st.sidebar.radio("📁 Select Section", ["🔴 Risk Assessment", "🔵 Water Quality", "🟢 Combined Analysis"])
+st.markdown("---")
 
 # ---------------------------- HELPER FUNCTION ----------------------------
 def load_data(file, name):
