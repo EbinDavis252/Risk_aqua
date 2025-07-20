@@ -1,164 +1,140 @@
 import streamlit as st
-import sqlite3
 import os
-import pandas as pd
-import plotly.express as px
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import classification_report
-import joblib
+import sqlite3
+from pathlib import Path
 
-# ---------------------------- CONFIG ----------------------------
-st.set_page_config(page_title="AI Aqua Risk System", layout="wide")
-
-# ---------------------------- DATABASE SETUP ----------------------------
+# ----------------------
+# Database setup
+# ----------------------
 conn = sqlite3.connect("users.db", check_same_thread=False)
 cursor = conn.cursor()
-cursor.execute('''
+cursor.execute("""
 CREATE TABLE IF NOT EXISTS users (
     username TEXT PRIMARY KEY,
     password TEXT
 )
-''')
+""")
 conn.commit()
 
-# ---------------------------- FOLDER SETUP ----------------------------
-if not os.path.exists("saved_user_data"):
-    os.makedirs("saved_user_data")
+# ----------------------
+# File storage
+# ----------------------
+Path("saved_user_data").mkdir(exist_ok=True)
 
-# ---------------------------- SIDEBAR STYLE ----------------------------
-st.markdown("""
-    <style>
-        [data-testid="stSidebar"] {
-            background-color: #002244;
-        }
-        .css-10trblm, .st-bz, .st-cz, .st-dz, .st-em {
-            color: white !important;
-            font-weight: 500;
-        }
-        input, label, .stTextInput label, .stSelectbox label {
-            color: white !important;
-        }
-    </style>
-""", unsafe_allow_html=True)
+# ----------------------
+# Page config
+# ----------------------
+st.set_page_config(page_title="Aqua Risk System", layout="wide")
 
-st.sidebar.image("https://upload.wikimedia.org/wikipedia/commons/3/3f/Water_icon.svg", width=80)
-st.sidebar.title("🌊 Aqua Risk System")
+# ----------------------
+# Sidebar Styling
+# ----------------------
+with st.sidebar:
+    st.markdown("""
+        <style>
+            .css-1d391kg {background-color: #002244;}
+            .stSelectbox > div {color: white;}
+            .stTextInput > div > div > input {
+                background-color: #ffffff10;
+                color: white;
+                border: 1px solid #ccc;
+            }
+            .stButton button {
+                background-color: #00aaff;
+                color: white;
+                width: 100%;
+                border-radius: 8px;
+                font-weight: bold;
+            }
+        </style>
+    """, unsafe_allow_html=True)
 
-# ---------------------------- AUTH ----------------------------
-auth_option = st.sidebar.selectbox("Login/Register", ["Login", "Register"])
-username = st.sidebar.text_input("👤 Username", key="username")
-password = st.sidebar.text_input("🔒 Password", type="password", key="password")
+    st.image("https://cdn-icons-png.flaticon.com/512/4278/4278449.png", width=60)
+    st.markdown("<h2 style='color:white;'>🌊 Aqua Risk Intelligence</h2>", unsafe_allow_html=True)
 
-def register_user():
-    cursor.execute("SELECT * FROM users WHERE username=?", (username,))
-    if cursor.fetchone():
-        st.sidebar.error("Username already exists.")
+    auth_choice = st.selectbox("Login/Register", ["Login", "Register"])
+
+    username = st.text_input("👤 Username")
+    password = st.text_input("🔒 Password", type="password")
+
+    if auth_choice == "Register":
+        if st.button("Create Account"):
+            cursor.execute("INSERT OR REPLACE INTO users (username, password) VALUES (?, ?)", (username, password))
+            conn.commit()
+            st.success("✅ Account created successfully! Please log in.")
     else:
-        cursor.execute("INSERT INTO users VALUES (?,?)", (username, password))
-        conn.commit()
-        st.sidebar.success("Registered! Please log in.")
+        if st.button("Login to Continue"):
+            cursor.execute("SELECT * FROM users WHERE username=? AND password=?", (username, password))
+            result = cursor.fetchone()
+            if result:
+                st.session_state["logged_in"] = True
+                st.session_state["username"] = username
+                st.success(f"✅ Welcome {username}!")
+            else:
+                st.error("❌ Invalid credentials")
 
-def login_user():
-    cursor.execute("SELECT * FROM users WHERE username=? AND password=?", (username, password))
-    return cursor.fetchone() is not None
+# ----------------------
+# Main App Content
+# ----------------------
+if st.session_state.get("logged_in"):
 
-if auth_option == "Register":
-    if st.sidebar.button("Register"):
-        register_user()
-    st.stop()
+    st.sidebar.markdown("---")
+    section = st.sidebar.radio("📂 Select Module", ["📊 Risk Assessment", "💧 Water Quality", "📈 Combined Insights"])
 
-if not login_user():
-    st.sidebar.warning("Login to Continue")
-    st.stop()
+    st.title(f"{section} Dashboard")
 
-# ---------------------------- PAGE SELECT ----------------------------
-section = st.sidebar.radio("📁 Select Tab", ["🐟 Farm Risk", "💰 Loan Default", "🔗 Combined Analysis"])
+    if section == "📊 Risk Assessment":
+        st.subheader("🧠 Predict Loan Default Risk")
+        uploaded_file = st.file_uploader("Upload Farmer & Loan Data", type=["csv"], key="loan_data")
+        if uploaded_file:
+            import pandas as pd
+            import plotly.express as px
 
-# ---------------------------- DATA LOADER ----------------------------
-def load_data(file, name):
-    if file:
-        df = pd.read_csv(file)
-        path = f"saved_user_data/{username}_{name}.csv"
-        df.to_csv(path, index=False)
-        return df
-    elif os.path.exists(f"saved_user_data/{username}_{name}.csv"):
-        return pd.read_csv(f"saved_user_data/{username}_{name}.csv")
-    else:
-        return None
+            data = pd.read_csv(uploaded_file)
+            st.dataframe(data.head())
 
-# ---------------------------- FARM RISK TAB ----------------------------
-if section == "🐟 Farm Risk":
-    st.title("🐟 Fish Farm Failure Risk (Water Quality Based)")
-    water_file = st.file_uploader("Upload Water Quality CSV", type=["csv"], key="farm_file")
-    df = load_data(water_file, "farm_risk")
+            # Example analysis
+            st.plotly_chart(px.histogram(data, x='loan_amount', color='loan_default', title="Loan Amount vs Default"))
+            st.info("📌 Consider monitoring farms with high loan amount and low credit score for better default prediction.")
+    
+    elif section == "💧 Water Quality":
+        st.subheader("💧 Analyze Water Indicators for Fish Farm")
+        water_file = st.file_uploader("Upload Water Quality Data", type=["csv"], key="water_data")
+        if water_file:
+            import pandas as pd
+            import plotly.express as px
 
-    if df is not None:
-        st.subheader("📋 Uploaded Water Quality Data")
-        st.dataframe(df.head())
+            water_df = pd.read_csv(water_file)
+            st.dataframe(water_df.head())
 
-        if {'temperature', 'pH', 'ammonia', 'dissolved_oxygen', 'mortality'}.issubset(df.columns):
-            fig = px.scatter_matrix(df, dimensions=['temperature', 'pH', 'ammonia', 'dissolved_oxygen'],
-                                    title="Water Quality Correlation Matrix")
-            st.plotly_chart(fig, use_container_width=True)
+            # Example chart
+            st.plotly_chart(px.line(water_df, x='date', y='pH', title="pH Trend Over Time"))
+            st.plotly_chart(px.box(water_df, y='ammonia_level', title="Ammonia Level Spread"))
 
-            df['risk'] = ((df['pH'] < 6.5) | (df['ammonia'] > 0.5) | (df['dissolved_oxygen'] < 4)).astype(int)
-            risk_count = df['risk'].sum()
+            st.warning("⚠️ pH levels outside the 6.5–8.5 range indicate increased risk to aquatic life.")
+            st.success("✅ Stable DO and Ammonia levels indicate good farm health.")
+    
+    elif section == "📈 Combined Insights":
+        st.subheader("📊 Combined Risk Monitoring System")
+        col1, col2 = st.columns(2)
 
-            st.warning(f"⚠️ {risk_count} out of {len(df)} farms show poor water conditions.")
-            st.success("✅ Recommendation: Monitor pH and ammonia weekly. Add aeration to boost DO.")
+        with col1:
+            loan_file = st.file_uploader("Loan Data", type="csv", key="combo_loan")
+        with col2:
+            water_file = st.file_uploader("Water Quality", type="csv", key="combo_water")
 
-# ---------------------------- LOAN DEFAULT TAB ----------------------------
-elif section == "💰 Loan Default":
-    st.title("💰 Loan Default Risk (Farmer & Farm Profile Based)")
-    profile_file = st.file_uploader("Upload Farmer Profile CSV", type=["csv"], key="loan_file")
-    df = load_data(profile_file, "loan_risk")
+        if loan_file and water_file:
+            import pandas as pd
+            loan_df = pd.read_csv(loan_file)
+            water_df = pd.read_csv(water_file)
 
-    if df is not None:
-        st.subheader("📋 Uploaded Farmer Loan Data")
-        st.dataframe(df.head())
+            st.markdown("### 🧠 AI Recommendations")
+            if loan_df['loan_default'].mean() > 0.5:
+                st.error("🔴 High default rate! Suggest risk-based loan approval system.")
+            if water_df['pH'].mean() < 6.5 or water_df['pH'].mean() > 8.5:
+                st.warning("⚠️ Water pH out of optimal range. Recommend immediate field testing.")
+            st.success("🧪 Integrating loan data with water quality helps prioritize high-risk farms.")
 
-        if 'default' in df.columns:
-            if 'loan_amount' in df.columns:
-                fig = px.histogram(df, x='loan_amount', color='default', barmode='overlay',
-                                   title="Loan Amount Distribution by Default Status")
-                st.plotly_chart(fig, use_container_width=True)
+else:
+    st.warning("🔐 Please log in from the sidebar to use the Aqua Risk System.")
 
-            X = df.drop("default", axis=1).select_dtypes(include='number')
-            y = df['default']
-            X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2)
-            model = RandomForestClassifier().fit(X_train, y_train)
-            preds = model.predict(X_test)
-            st.subheader("📊 Loan Default Classification Report")
-            st.text(classification_report(y_test, preds))
-            joblib.dump(model, "loan_model.pkl")
-
-            st.info("📌 Tip: Higher risk is correlated with high loan amount & low income levels.")
-
-# ---------------------------- COMBINED TAB ----------------------------
-elif section == "🔗 Combined Analysis":
-    st.title("🔗 Combined Water & Loan Risk Assessment")
-    comb1 = st.file_uploader("Upload Farmer Loan Data", type=["csv"], key="c1")
-    comb2 = st.file_uploader("Upload Water Quality Data", type=["csv"], key="c2")
-
-    df1 = load_data(comb1, "combined_loan")
-    df2 = load_data(comb2, "combined_water")
-
-    if df1 is not None and df2 is not None:
-        st.success("✅ Both datasets loaded and merged.")
-        combined_df = pd.concat([df1.reset_index(drop=True), df2.reset_index(drop=True)], axis=1)
-        st.dataframe(combined_df.head())
-
-        if 'default' in combined_df.columns:
-            X = combined_df.drop("default", axis=1).select_dtypes(include='number')
-            y = combined_df["default"]
-            X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2)
-            model = RandomForestClassifier().fit(X_train, y_train)
-            preds = model.predict(X_test)
-
-            st.subheader("📈 Combined Risk Prediction Report")
-            st.text(classification_report(y_test, preds))
-            joblib.dump(model, "combined_model.pkl")
-
-            st.info("📌 Insight: Farms with poor water quality and low income have the highest default risk.")
-            st.warning("⚠️ Consider regular quality monitoring and farm audits for high-risk borrowers.")
