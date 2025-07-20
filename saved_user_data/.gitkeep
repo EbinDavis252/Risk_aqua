@@ -1,4 +1,0 @@
-touch saved_user_data/.gitkeep
-git add saved_user_data/.gitkeep
-git commit -m "Ensure saved_user_data folder exists"
-git push
