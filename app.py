@@ -1,38 +1,58 @@
 import streamlit as st
 import pandas as pd
+import numpy as np
 import sqlite3
-from xgboost import XGBClassifier
 from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import classification_report
 
-# SQLite setup
-conn = sqlite3.connect("users.db", check_same_thread=False)
-cursor = conn.cursor()
-cursor.execute("""
-CREATE TABLE IF NOT EXISTS users (
+# -----------------------------
+# 🌈 Vibrant Background & Banner
+st.markdown("""
+    <style>
+    body {
+        background: linear-gradient(135deg, #f5a623, #f76b1c, #fad961, #fcb045, #ffafbd);
+        background-size: 400% 400%;
+        animation: gradientBG 15s ease infinite;
+    }
+    @keyframes gradientBG {
+        0% {background-position: 0% 50%;}
+        50% {background-position: 100% 50%;}
+        100% {background-position: 0% 50%;}
+    }
+    .banner {
+        font-size: 40px;
+        text-align: center;
+        color: white;
+        font-weight: bold;
+        margin-top: 20px;
+    }
+    </style>
+""", unsafe_allow_html=True)
+st.markdown('<div class="banner">🐟 Aqua Loan Risk Assessment System</div>', unsafe_allow_html=True)
+
+# -----------------------------
+# 📦 SQLite DB Setup
+conn = sqlite3.connect('users.db')
+c = conn.cursor()
+c.execute('''CREATE TABLE IF NOT EXISTS users (
     username TEXT PRIMARY KEY,
     password TEXT
-)
-""")
+)''')
 conn.commit()
 
+# -----------------------------
+# 🔐 Login/Register System
 def register_user(username, password):
-    cursor.execute("INSERT OR IGNORE INTO users (username, password) VALUES (?, ?)", (username, password))
+    c.execute("INSERT INTO users VALUES (?, ?)", (username, password))
     conn.commit()
 
 def login_user(username, password):
-    cursor.execute("SELECT * FROM users WHERE username=? AND password=?", (username, password))
-    return cursor.fetchone()
+    c.execute("SELECT * FROM users WHERE username=? AND password=?", (username, password))
+    return c.fetchone()
 
-# Session
-if 'logged_in' not in st.session_state:
-    st.session_state.logged_in = False
-if 'username' not in st.session_state:
-    st.session_state.username = ""
-
-# Sidebar Menu
-st.set_page_config(page_title="Aqua Risk System", layout="wide")
-st.title("🐟 AI-Driven Risk Assessment System for Aqua Loan Providers")
-
+# -----------------------------
+# 📤 Sidebar: File Upload + Login
 menu = ["Login", "Register"]
 choice = st.sidebar.selectbox("Menu", menu)
 
@@ -41,96 +61,61 @@ if choice == "Register":
     new_user = st.sidebar.text_input("Username")
     new_pass = st.sidebar.text_input("Password", type='password')
     if st.sidebar.button("Register"):
-        register_user(new_user, new_pass)
-        st.sidebar.success("Registered! Please login.")
+        try:
+            register_user(new_user, new_pass)
+            st.success("✅ Account created! Please log in.")
+        except sqlite3.IntegrityError:
+            st.error("❌ Username already exists.")
 
-if choice == "Login" or st.session_state.logged_in:
-    if not st.session_state.logged_in:
-        username = st.sidebar.text_input("Username")
-        password = st.sidebar.text_input("Password", type='password')
-        if st.sidebar.button("Login"):
-            user = login_user(username, password)
-            if user:
-                st.session_state.logged_in = True
-                st.session_state.username = username
-                st.success(f"Welcome {username}")
-            else:
-                st.sidebar.error("Invalid login.")
+elif choice == "Login":
+    st.sidebar.subheader("Login to App")
+    username = st.sidebar.text_input("Username")
+    password = st.sidebar.text_input("Password", type='password')
+    if st.sidebar.button("Login"):
+        result = login_user(username, password)
+        if result:
+            st.success(f"Welcome {username} 👋")
 
-    if st.session_state.logged_in:
-        st.markdown("---")
-        st.subheader("📂 Upload Datasets")
+            # -----------------------------
+            st.subheader("📂 Upload CSV Data")
+            loan_file = st.file_uploader("Upload Loan Data CSV", type=["csv"], key="loan")
+            sensor_file = st.file_uploader("Upload Sensor Data CSV", type=["csv"], key="sensor")
 
-        loan_file = st.sidebar.file_uploader("Upload Loan Data CSV", type=["csv"])
-        sensor_file = st.sidebar.file_uploader("Upload Sensor Data CSV", type=["csv"])
+            if loan_file:
+                loan_df = pd.read_csv(loan_file)
+                st.write("📊 Loan Data Preview", loan_df.head())
 
-        if loan_file and sensor_file:
-            loan_df = pd.read_csv(loan_file).dropna()
-            sensor_df = pd.read_csv(sensor_file).dropna()
-
-            st.success("✅ Files uploaded successfully!")
-
-            # Loan Model Training
-            X_loan = loan_df[['loan_amount', 'loan_term', 'emi_paid', 'emi_missed', 'age', 'credit_score', 'income']]
-            y_loan = loan_df['defaulted']
-            loan_model = XGBClassifier()
-            loan_model.fit(X_loan, y_loan)
-
-            # Farm Model Training
-            X_farm = sensor_df[['temp', 'ph', 'do', 'ammonia', 'mortality']]
-            y_farm = sensor_df['farm_failure']
-            farm_model = RandomForestClassifier()
-            farm_model.fit(X_farm, y_farm)
-
-            st.markdown("---")
-            st.subheader("📊 Risk Prediction Form")
-
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                loan_amount = st.number_input("Loan Amount", 5000, 100000)
-                age = st.slider("Age", 18, 80, 35)
-            with col2:
-                loan_term = st.number_input("Loan Term (months)", 6, 60, 12)
-                credit_score = st.slider("Credit Score", 300, 900, 650)
-            with col3:
-                emi_paid = st.slider("EMIs Paid", 0, 24, 6)
-                emi_missed = st.slider("EMIs Missed", 0, 10, 1)
-                income = st.number_input("Monthly Income", 1000, 50000, 15000)
-
-            st.markdown("### Farm Sensor Values")
-            col4, col5, col6 = st.columns(3)
-            with col4:
-                temp = st.slider("Temperature (°C)", 20.0, 35.0, 28.0)
-            with col5:
-                ph = st.slider("pH Level", 5.0, 9.0, 7.0)
-            with col6:
-                do = st.slider("Dissolved Oxygen (mg/L)", 2.0, 10.0, 6.0)
-
-            col7, col8 = st.columns(2)
-            with col7:
-                ammonia = st.slider("Ammonia (ppm)", 0.0, 3.0, 1.0)
-            with col8:
-                mortality = st.slider("Mortality Rate (%)", 0, 100, 10)
-
-            if st.button("🔍 Predict Risk"):
-                pred_loan = pd.DataFrame([[loan_amount, loan_term, emi_paid, emi_missed, age, credit_score, income]],
-                                         columns=X_loan.columns)
-                pred_farm = pd.DataFrame([[temp, ph, do, ammonia, mortality]],
-                                         columns=X_farm.columns)
-
-                loan_risk = loan_model.predict_proba(pred_loan)[0][1]
-                farm_risk = farm_model.predict_proba(pred_farm)[0][1]
-
-                st.metric("Loan Default Risk", f"{loan_risk*100:.2f}%")
-                st.metric("Farm Failure Risk", f"{farm_risk*100:.2f}%")
-
-                if loan_risk > 0.7 and farm_risk > 0.7:
-                    st.error("🚨 HIGH RISK: Immediate action needed!")
-                elif loan_risk > 0.5 or farm_risk > 0.5:
-                    st.warning("⚠️ MEDIUM RISK: Field check recommended.")
+                # Normalize column names
+                loan_df.columns = [col.strip().lower() for col in loan_df.columns]
+                expected_loan_cols = ['loan_amount', 'loan_term', 'emi_paid', 'emi_missed', 'age', 'credit_score', 'income', 'defaulted']
+                if all(col in loan_df.columns for col in expected_loan_cols):
+                    X_loan = loan_df[expected_loan_cols[:-1]]
+                    y_loan = loan_df['defaulted']
+                    model_loan = RandomForestClassifier()
+                    model_loan.fit(X_loan, y_loan)
+                    preds_loan = model_loan.predict(X_loan)
+                    st.success("✅ Loan Default Model Trained")
+                    st.write(classification_report(y_loan, preds_loan, output_dict=True))
                 else:
-                    st.success("✅ LOW RISK: No intervention required.")
+                    st.error(f"Loan data must contain columns: {expected_loan_cols}")
+
+            if sensor_file:
+                sensor_df = pd.read_csv(sensor_file)
+                st.write("📊 Sensor Data Preview", sensor_df.head())
+
+                # Normalize column names
+                sensor_df.columns = [col.strip().lower() for col in sensor_df.columns]
+                expected_sensor_cols = ['temp', 'ph', 'do', 'ammonia', 'mortality']
+                if all(col in sensor_df.columns for col in expected_sensor_cols):
+                    X_farm = sensor_df[expected_sensor_cols[:-1]]
+                    y_farm = sensor_df['mortality']
+                    model_farm = RandomForestClassifier()
+                    model_farm.fit(X_farm, y_farm)
+                    preds_farm = model_farm.predict(X_farm)
+                    st.success("✅ Farm Failure Model Trained")
+                    st.write(classification_report(y_farm, preds_farm, output_dict=True))
+                else:
+                    st.error(f"Sensor data must contain columns: {expected_sensor_cols}")
+
         else:
-            st.info("📁 Please upload both datasets.")
-else:
-    st.warning("🔒 Please login to continue.")
+            st.error("❌ Invalid Username or Password")
