@@ -21,31 +21,41 @@ st.markdown("""
             background-attachment: fixed;
         }
 
-        /* Sidebar styling */
+        /* Sidebar background */
         [data-testid="stSidebar"] {
             background-image: url("https://images.unsplash.com/photo-1519638399535-1b036603ac77");
             background-size: cover;
             color: white;
         }
 
-        /* Sidebar elements */
-        [data-testid="stSidebar"] * {
-            color: white;
-            font-weight: bold;
+        /* Input & Label styling inside sidebar */
+        [data-testid="stSidebar"] input,
+        [data-testid="stSidebar"] textarea {
+            background-color: rgba(255, 255, 255, 0.1);
+            color: white !important;
+            border: 1px solid white;
+            border-radius: 5px;
         }
 
-        .css-1aumxhk {
-            background-color: rgba(0,0,0,0.5);
-            border-radius: 10px;
+        [data-testid="stSidebar"] label {
+            color: #ffffff !important;
+            font-weight: 600;
         }
 
-        /* Stylish button */
+        [data-testid="stSidebar"] select {
+            background-color: rgba(255, 255, 255, 0.1);
+            color: white !important;
+            border: 1px solid white;
+        }
+
+        /* Sidebar buttons */
         .stButton > button {
             color: white;
             background-color: #006699;
             border-radius: 10px;
             padding: 10px 24px;
             font-weight: bold;
+            border: none;
         }
 
         /* Welcome banner */
