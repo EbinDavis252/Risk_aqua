@@ -127,6 +127,17 @@ if not login_user():
 st.markdown(f"""<div class="welcome-banner">👋 Welcome, <span style="color:#004488">{username}</span>!</div>""", unsafe_allow_html=True)
 section = st.sidebar.radio("📁 Select Section", ["🔴 Risk Assessment", "🔵 Water Quality", "🟢 Combined Analysis"])
 st.markdown("---")
+st.markdown("""
+<div style='
+    background-color: rgba(255, 255, 255, 0.85);
+    padding: 15px 25px;
+    border-radius: 10px;
+    margin-top: 10px;
+    margin-bottom: 20px;
+'>
+<h1 style='color: #003366; text-align: center;'>🧠 Aqua Risk System Dashboard</h1>
+</div>
+""", unsafe_allow_html=True)
 
 # ---------------------------- HELPER FUNCTION ----------------------------
 def load_data(file, name):
