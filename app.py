@@ -14,29 +14,37 @@ st.set_page_config(page_title="AI Aqua Risk System", layout="wide")
 # Custom CSS for full background and sidebar
 st.markdown("""
     <style>
-        /* Page background */
+        /* Full App Background */
         .stApp {
             background-image: url("https://images.unsplash.com/photo-1507525428034-b723cf961d3e");
             background-size: cover;
             background-attachment: fixed;
         }
 
-        /* Sidebar styling */
+        /* Sidebar Background */
         [data-testid="stSidebar"] {
             background-image: url("https://images.unsplash.com/photo-1519638399535-1b036603ac77");
             background-size: cover;
-            color: white;
+            background-position: center;
         }
 
-        /* Sidebar elements */
-        [data-testid="stSidebar"] * {
-            color: white;
+        /* Make text black inside input fields */
+        [data-testid="stSidebar"] input,
+        [data-testid="stSidebar"] textarea {
+            color: black !important;
+            background-color: rgba(255, 255, 255, 0.9);
+            border: 1px solid #333;
+            border-radius: 5px;
             font-weight: bold;
         }
 
-        .css-1aumxhk {
-            background-color: rgba(0,0,0,0.5);
-            border-radius: 10px;
+        [data-testid="stSidebar"] input::placeholder {
+            color: #666666 !important;
+        }
+
+        [data-testid="stSidebar"] label {
+            color: #ffffff !important;
+            font-weight: 600;
         }
 
         /* Stylish button */
@@ -46,14 +54,15 @@ st.markdown("""
             border-radius: 10px;
             padding: 10px 24px;
             font-weight: bold;
+            border: none;
         }
 
-        /* Welcome banner */
+        /* Welcome Banner */
         .welcome-banner {
             font-size: 30px;
             padding: 10px;
             text-align: center;
-            background-color: #ffffff99;
+            background-color: #ffffffcc;
             border-radius: 10px;
             font-weight: bold;
             color: #003366;
