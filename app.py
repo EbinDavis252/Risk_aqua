@@ -3,33 +3,25 @@ import pandas as pd
 import numpy as np
 import sqlite3
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.model_selection import train_test_split
 from sklearn.metrics import classification_report
 
 # -----------------------------
-# 🌈 Vibrant Background & Banner
-st.markdown("""
-    <style>
-    body {
-        background: linear-gradient(135deg, #f5a623, #f76b1c, #fad961, #fcb045, #ffafbd);
-        background-size: 400% 400%;
-        animation: gradientBG 15s ease infinite;
-    }
-    @keyframes gradientBG {
-        0% {background-position: 0% 50%;}
-        50% {background-position: 100% 50%;}
-        100% {background-position: 0% 50%;}
-    }
-    .banner {
-        font-size: 40px;
-        text-align: center;
-        color: white;
-        font-weight: bold;
-        margin-top: 20px;
-    }
-    </style>
-""", unsafe_allow_html=True)
-st.markdown('<div class="banner">🐟 Aqua Loan Risk Assessment System</div>', unsafe_allow_html=True)
+# 🎨 Per-tab Background Colors
+def set_background(color):
+    st.markdown(f"""
+        <style>
+        .stApp {{
+            background-color: {color};
+        }}
+        .banner {{
+            font-size: 40px;
+            text-align: center;
+            color: #000;
+            font-weight: bold;
+            margin-top: 20px;
+        }}
+        </style>
+    """, unsafe_allow_html=True)
 
 # -----------------------------
 # 📦 SQLite DB Setup
@@ -57,6 +49,7 @@ menu = ["Login", "Register"]
 choice = st.sidebar.selectbox("Menu", menu)
 
 if choice == "Register":
+    set_background("#e2f7e1")  # light green
     st.sidebar.subheader("Create Account")
     new_user = st.sidebar.text_input("Username")
     new_pass = st.sidebar.text_input("Password", type='password')
@@ -68,15 +61,17 @@ if choice == "Register":
             st.error("❌ Username already exists.")
 
 elif choice == "Login":
+    set_background("#d4e8fc")  # soft blue
     st.sidebar.subheader("Login to App")
     username = st.sidebar.text_input("Username")
     password = st.sidebar.text_input("Password", type='password')
     if st.sidebar.button("Login"):
         result = login_user(username, password)
         if result:
+            set_background("#fdf6cc")  # soft yellow
+            st.markdown('<div class="banner">🐟 Aqua Loan Risk Assessment System</div>', unsafe_allow_html=True)
             st.success(f"Welcome {username} 👋")
 
-            # -----------------------------
             st.subheader("📂 Upload CSV Data")
             loan_file = st.file_uploader("Upload Loan Data CSV", type=["csv"], key="loan")
             sensor_file = st.file_uploader("Upload Sensor Data CSV", type=["csv"], key="sensor")
@@ -85,7 +80,6 @@ elif choice == "Login":
                 loan_df = pd.read_csv(loan_file)
                 st.write("📊 Loan Data Preview", loan_df.head())
 
-                # Normalize column names
                 loan_df.columns = [col.strip().lower() for col in loan_df.columns]
                 expected_loan_cols = ['loan_amount', 'loan_term', 'emi_paid', 'emi_missed', 'age', 'credit_score', 'income', 'defaulted']
                 if all(col in loan_df.columns for col in expected_loan_cols):
@@ -103,7 +97,6 @@ elif choice == "Login":
                 sensor_df = pd.read_csv(sensor_file)
                 st.write("📊 Sensor Data Preview", sensor_df.head())
 
-                # Normalize column names
                 sensor_df.columns = [col.strip().lower() for col in sensor_df.columns]
                 expected_sensor_cols = ['temp', 'ph', 'do', 'ammonia', 'mortality']
                 if all(col in sensor_df.columns for col in expected_sensor_cols):
