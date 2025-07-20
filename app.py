@@ -8,52 +8,47 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import classification_report
 import joblib
 
-# ---------------------------- SETUP ----------------------------
-st.set_page_config(layout="wide", page_title="AI-Driven Aqua Risk System")
+# ---------------------------- CONFIG ----------------------------
+st.set_page_config(page_title="AI Aqua Risk System", layout="wide")
 
-# Database setup
+# ---------------------------- DATABASE SETUP ----------------------------
 conn = sqlite3.connect("users.db", check_same_thread=False)
 cursor = conn.cursor()
-
 cursor.execute('''
 CREATE TABLE IF NOT EXISTS users (
     username TEXT PRIMARY KEY,
     password TEXT
 )
 ''')
-
-cursor.execute('''
-CREATE TABLE IF NOT EXISTS audit_logs (
-    username TEXT,
-    section TEXT,
-    model_accuracy TEXT,
-    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
-)
-''')
 conn.commit()
 
-# Create directory for uploaded data
+# ---------------------------- FOLDER SETUP ----------------------------
 if not os.path.exists("saved_user_data"):
     os.makedirs("saved_user_data")
 
-# ---------------------------- SIDEBAR UI ----------------------------
+# ---------------------------- SIDEBAR STYLE ----------------------------
 st.markdown("""
     <style>
         [data-testid="stSidebar"] {
-            background-color: #003366;
+            background-color: #002244;
         }
-        .sidebar-text input, .sidebar-text label {
+        .css-10trblm, .st-bz, .st-cz, .st-dz, .st-em {
+            color: white !important;
+            font-weight: 500;
+        }
+        input, label, .stTextInput label, .stSelectbox label {
             color: white !important;
         }
     </style>
 """, unsafe_allow_html=True)
 
 st.sidebar.image("https://upload.wikimedia.org/wikipedia/commons/3/3f/Water_icon.svg", width=80)
-st.sidebar.title("🌊 Aqua Risk AI App")
+st.sidebar.title("🌊 Aqua Risk System")
 
-auth_option = st.sidebar.selectbox("🔐 Login / Register", ["Login", "Register"])
-username = st.sidebar.text_input("👤 Username")
-password = st.sidebar.text_input("🔒 Password", type="password")
+# ---------------------------- AUTH ----------------------------
+auth_option = st.sidebar.selectbox("Login/Register", ["Login", "Register"])
+username = st.sidebar.text_input("👤 Username", key="username")
+password = st.sidebar.text_input("🔒 Password", type="password", key="password")
 
 def register_user():
     cursor.execute("SELECT * FROM users WHERE username=?", (username,))
@@ -62,7 +57,7 @@ def register_user():
     else:
         cursor.execute("INSERT INTO users VALUES (?,?)", (username, password))
         conn.commit()
-        st.sidebar.success("Registration successful. Please log in.")
+        st.sidebar.success("Registered! Please log in.")
 
 def login_user():
     cursor.execute("SELECT * FROM users WHERE username=? AND password=?", (username, password))
@@ -77,15 +72,10 @@ if not login_user():
     st.sidebar.warning("Login to Continue")
     st.stop()
 
-# ---------------------------- PAGE TABS ----------------------------
-st.title("🧠 AI-Driven Risk Assessment System for Aqua Loan Providers")
-tab1, tab2, tab3, tab4 = st.tabs([
-    "🔴 Loan Risk Assessment",
-    "🔵 Water Quality Monitoring",
-    "🟢 Combined Aqua Risk Analysis",
-    "📊 Reporting & Audit Logs"
-])
+# ---------------------------- PAGE SELECT ----------------------------
+section = st.sidebar.radio("📁 Select Tab", ["🐟 Farm Risk", "💰 Loan Default", "🔗 Combined Analysis"])
 
+# ---------------------------- DATA LOADER ----------------------------
 def load_data(file, name):
     if file:
         df = pd.read_csv(file)
@@ -97,89 +87,78 @@ def load_data(file, name):
     else:
         return None
 
-# ---------------------------- TAB 1: Loan Risk ----------------------------
-with tab1:
-    st.header("📊 Farmer Loan Default Risk Prediction")
-    file = st.file_uploader("Upload Farmer & Loan Profile Data", type=["csv"], key="loan")
-    df = load_data(file, "loan")
+# ---------------------------- FARM RISK TAB ----------------------------
+if section == "🐟 Farm Risk":
+    st.title("🐟 Fish Farm Failure Risk (Water Quality Based)")
+    water_file = st.file_uploader("Upload Water Quality CSV", type=["csv"], key="farm_file")
+    df = load_data(water_file, "farm_risk")
 
     if df is not None:
+        st.subheader("📋 Uploaded Water Quality Data")
+        st.dataframe(df.head())
+
+        if {'temperature', 'pH', 'ammonia', 'dissolved_oxygen', 'mortality'}.issubset(df.columns):
+            fig = px.scatter_matrix(df, dimensions=['temperature', 'pH', 'ammonia', 'dissolved_oxygen'],
+                                    title="Water Quality Correlation Matrix")
+            st.plotly_chart(fig, use_container_width=True)
+
+            df['risk'] = ((df['pH'] < 6.5) | (df['ammonia'] > 0.5) | (df['dissolved_oxygen'] < 4)).astype(int)
+            risk_count = df['risk'].sum()
+
+            st.warning(f"⚠️ {risk_count} out of {len(df)} farms show poor water conditions.")
+            st.success("✅ Recommendation: Monitor pH and ammonia weekly. Add aeration to boost DO.")
+
+# ---------------------------- LOAN DEFAULT TAB ----------------------------
+elif section == "💰 Loan Default":
+    st.title("💰 Loan Default Risk (Farmer & Farm Profile Based)")
+    profile_file = st.file_uploader("Upload Farmer Profile CSV", type=["csv"], key="loan_file")
+    df = load_data(profile_file, "loan_risk")
+
+    if df is not None:
+        st.subheader("📋 Uploaded Farmer Loan Data")
         st.dataframe(df.head())
 
         if 'default' in df.columns:
+            if 'loan_amount' in df.columns:
+                fig = px.histogram(df, x='loan_amount', color='default', barmode='overlay',
+                                   title="Loan Amount Distribution by Default Status")
+                st.plotly_chart(fig, use_container_width=True)
+
             X = df.drop("default", axis=1).select_dtypes(include='number')
             y = df['default']
             X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2)
             model = RandomForestClassifier().fit(X_train, y_train)
             preds = model.predict(X_test)
-            report = classification_report(y_test, preds, output_dict=True)
-            acc = round(report['accuracy'] * 100, 2)
-            st.success(f"✅ Model Trained - Accuracy: {acc}%")
+            st.subheader("📊 Loan Default Classification Report")
             st.text(classification_report(y_test, preds))
             joblib.dump(model, "loan_model.pkl")
 
-            # Save result in DB
-            cursor.execute("INSERT INTO audit_logs (username, section, model_accuracy) VALUES (?, ?, ?)",
-                           (username, "Loan Risk", f"{acc}%"))
-            conn.commit()
+            st.info("📌 Tip: Higher risk is correlated with high loan amount & low income levels.")
 
-            st.info("💡 Default risk rises with high loan amount & low income.")
+# ---------------------------- COMBINED TAB ----------------------------
+elif section == "🔗 Combined Analysis":
+    st.title("🔗 Combined Water & Loan Risk Assessment")
+    comb1 = st.file_uploader("Upload Farmer Loan Data", type=["csv"], key="c1")
+    comb2 = st.file_uploader("Upload Water Quality Data", type=["csv"], key="c2")
 
-# ---------------------------- TAB 2: Water Quality ----------------------------
-with tab2:
-    st.header("🌊 Water Quality Risk Monitoring")
-    file = st.file_uploader("Upload Water Quality Data", type=["csv"], key="water")
-    df = load_data(file, "water")
-
-    if df is not None:
-        st.dataframe(df.head())
-
-        if {'pH', 'temperature', 'ammonia', 'dissolved_oxygen'}.issubset(df.columns):
-            fig = px.scatter_matrix(df, dimensions=['pH', 'temperature', 'ammonia', 'dissolved_oxygen'],
-                                    title="Water Quality Metrics")
-            st.plotly_chart(fig, use_container_width=True)
-
-            df['risk'] = ((df['pH'] < 6.5) | (df['ammonia'] > 0.5) | (df['dissolved_oxygen'] < 4)).astype(int)
-            risk_count = df['risk'].sum()
-            st.warning(f"⚠️ {risk_count} farms are at water quality risk.")
-
-            st.success("✅ Advice: Use aeration & monitor ammonia levels.")
-
-# ---------------------------- TAB 3: Combined Analysis ----------------------------
-with tab3:
-    st.header("🧬 Combined Loan + Water Quality Risk")
-    file1 = st.file_uploader("Upload Loan Data", type=["csv"], key="combine1")
-    file2 = st.file_uploader("Upload Water Quality Data", type=["csv"], key="combine2")
-    df1 = load_data(file1, "combine1")
-    df2 = load_data(file2, "combine2")
+    df1 = load_data(comb1, "combined_loan")
+    df2 = load_data(comb2, "combined_water")
 
     if df1 is not None and df2 is not None:
-        df_combined = pd.concat([df1.reset_index(drop=True), df2.reset_index(drop=True)], axis=1)
-        st.dataframe(df_combined.head())
+        st.success("✅ Both datasets loaded and merged.")
+        combined_df = pd.concat([df1.reset_index(drop=True), df2.reset_index(drop=True)], axis=1)
+        st.dataframe(combined_df.head())
 
-        if 'default' in df_combined.columns:
-            X = df_combined.drop("default", axis=1).select_dtypes(include='number')
-            y = df_combined["default"]
+        if 'default' in combined_df.columns:
+            X = combined_df.drop("default", axis=1).select_dtypes(include='number')
+            y = combined_df["default"]
             X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2)
             model = RandomForestClassifier().fit(X_train, y_train)
             preds = model.predict(X_test)
-            report = classification_report(y_test, preds, output_dict=True)
-            acc = round(report['accuracy'] * 100, 2)
-            st.success(f"✅ Combined Model Accuracy: {acc}%")
+
+            st.subheader("📈 Combined Risk Prediction Report")
             st.text(classification_report(y_test, preds))
             joblib.dump(model, "combined_model.pkl")
 
-            cursor.execute("INSERT INTO audit_logs (username, section, model_accuracy) VALUES (?, ?, ?)",
-                           (username, "Combined Risk", f"{acc}%"))
-            conn.commit()
-
-            st.info("📉 Farms with poor water & financial health are high-risk.")
-
-# ---------------------------- TAB 4: Reports ----------------------------
-with tab4:
-    st.header("📑 AI Model Reports and Logs")
-    df_log = pd.read_sql_query("SELECT * FROM audit_logs WHERE username=? ORDER BY timestamp DESC", conn, params=(username,))
-    if not df_log.empty:
-        st.dataframe(df_log)
-    else:
-        st.info("No audit logs yet. Train a model first.")
+            st.info("📌 Insight: Farms with poor water quality and low income have the highest default risk.")
+            st.warning("⚠️ Consider regular quality monitoring and farm audits for high-risk borrowers.")
