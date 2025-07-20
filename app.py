@@ -1,173 +1,163 @@
 import streamlit as st
-import os
 import pandas as pd
-import joblib
-import hashlib
+import os
+import pickle
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
+from sklearn.metrics import classification_report, accuracy_score
 
-# --- Styling the sidebar ---
+# Sidebar Styling
 sidebar_style = """
 <style>
 [data-testid="stSidebar"] {
-    background: linear-gradient(to bottom, #003366, #004080);
+    background: linear-gradient(180deg, #0f2027, #203a43, #2c5364);
     padding: 2rem 1rem;
+    color: #ffffff;
+    font-family: 'Segoe UI', sans-serif;
 }
-[data-testid="stSidebar"] * {
-    color: #ffcc00 !important;
-    font-family: 'Segoe UI', sans-serif !important;
+[data-testid="stSidebar"] h2, [data-testid="stSidebar"] h3,
+[data-testid="stSidebar"] .stTextInput label,
+[data-testid="stSidebar"] .stSelectbox label {
+    color: #ffffff;
+    font-weight: bold;
 }
 section[data-testid="stSidebar"] input {
-    background-color: white !important;
-    color: black !important;
-    border-radius: 5px !important;
+    background-color: #ffffff;
+    color: #000000;
+    border-radius: 6px;
 }
 section[data-testid="stSidebar"] button {
-    background-color: #0066cc !important;
-    color: white !important;
+    background-color: #1e90ff;
+    color: #ffffff;
     font-weight: bold;
-    border-radius: 5px !important;
-    padding: 0.4rem 1rem;
+    border-radius: 8px;
+    margin-top: 0.5rem;
+}
+section[data-testid="stSidebar"] button:hover {
+    background-color: #4682B4;
+}
+section[data-testid="stSidebar"] .stRadio > div {
+    color: #ffcc00;
+    font-weight: 500;
 }
 </style>
 """
 st.markdown(sidebar_style, unsafe_allow_html=True)
 
-# --- Functions ---
-def hash_password(password):
-    return hashlib.sha256(password.encode()).hexdigest()
+# User Database
+USERS_FILE = 'users.pkl'
 
-def save_user(username, password):
-    with open("users.csv", "a") as f:
-        f.write(f"{username},{hash_password(password)}\n")
+if not os.path.exists(USERS_FILE):
+    with open(USERS_FILE, 'wb') as f:
+        pickle.dump({}, f)
 
-def validate_user(username, password):
-    if not os.path.exists("users.csv"):
-        return False
-    hashed = hash_password(password)
-    with open("users.csv", "r") as f:
-        for line in f:
-            u, p = line.strip().split(",")
-            if u == username and p == hashed:
-                return True
-    return False
+def load_users():
+    with open(USERS_FILE, 'rb') as f:
+        return pickle.load(f)
 
-def save_uploaded_file(uploaded_file, username, prefix):
-    user_dir = f"userdata/{username}"
-    os.makedirs(user_dir, exist_ok=True)
-    file_path = os.path.join(user_dir, f"{prefix}_{uploaded_file.name}")
-    with open(file_path, "wb") as f:
-        f.write(uploaded_file.getbuffer())
-    return file_path
+def save_users(users):
+    with open(USERS_FILE, 'wb') as f:
+        pickle.dump(users, f)
 
-# --- App title ---
-st.title("🐟 AI-Driven Aqua Loan Risk Assessment Dashboard")
+users = load_users()
 
-# --- Login/Register System ---
-auth_status = False
-menu = ["Login", "Register"]
-choice = st.sidebar.selectbox("Login / Register", menu)
+# Login/Register
+st.sidebar.title("🔐 Login / Register")
+auth_mode = st.sidebar.selectbox("Select Mode", ["Login", "Register"])
+username = st.sidebar.text_input("Username")
+password = st.sidebar.text_input("Password", type="password")
 
-if choice == "Register":
-    st.sidebar.subheader("Create New Account")
-    new_user = st.sidebar.text_input("New Username")
-    new_pass = st.sidebar.text_input("New Password", type='password')
+login_status = False
+
+if auth_mode == "Register":
     if st.sidebar.button("Register"):
-        save_user(new_user, new_pass)
-        st.sidebar.success("Registered! Please login.")
-
-if choice == "Login":
-    st.sidebar.subheader("Login to Continue")
-    username = st.sidebar.text_input("Username")
-    password = st.sidebar.text_input("Password", type='password')
-    if st.sidebar.button("Login"):
-        if validate_user(username, password):
-            st.session_state['username'] = username
-            st.success(f"Welcome {username}!")
-            auth_status = True
+        if username in users:
+            st.sidebar.warning("User already exists.")
         else:
-            st.error("Invalid credentials")
+            users[username] = password
+            save_users(users)
+            st.sidebar.success("Registered successfully! Now login.")
 
-# --- If Authenticated ---
-if 'username' in st.session_state:
-    username = st.session_state['username']
-    tab = st.sidebar.radio("Select Section", ["📉 Risk Assessment", "🌊 Water Quality", "🧪 Combined Analysis"])
+elif auth_mode == "Login":
+    if st.sidebar.button("Login"):
+        if username in users and users[username] == password:
+            st.sidebar.success("Logged in successfully!")
+            login_status = True
+        else:
+            st.sidebar.error("Invalid credentials.")
 
-    if tab == "📉 Risk Assessment":
-        st.header("📉 Loan Default Risk Prediction")
+# Proceed if logged in
+if login_status:
+    st.sidebar.markdown("---")
+    section = st.sidebar.radio("📊 Select Section", 
+        ["📉 Risk Assessment", "🌊 Water Quality", "🧪 Combined Analysis"])
 
-        uploaded_loan = st.file_uploader("Upload Loan Dataset", type=["csv"], key="loan_upload")
-        if uploaded_loan:
-            path = save_uploaded_file(uploaded_loan, username, "loan")
-            df_loan = pd.read_csv(path)
-            st.dataframe(df_loan.head())
+    # Create user directory
+    user_dir = f"user_data/{username}"
+    os.makedirs(user_dir, exist_ok=True)
 
-            # Train model on uploaded data
-            try:
-                X = df_loan[['loan_amount', 'loan_term', 'emi_paid', 'emi_missed', 'age', 'credit_score', 'income']]
-                y = df_loan['default']
-                model = RandomForestClassifier()
-                model.fit(X, y)
-                df_loan["default_probability"] = model.predict_proba(X)[:,1]
-                st.success("Model trained and predictions added!")
-                st.dataframe(df_loan[['loan_amount', 'default_probability']].head())
-            except KeyError as e:
-                st.error(f"Missing columns: {e}")
+    st.title("💼 Aqua Loan Risk Management Dashboard")
 
-    elif tab == "🌊 Water Quality":
-        st.header("🌊 Water Quality Risk (Farm Failure)")
+    def train_model(data, features, target):
+        X = data[features]
+        y = data[target]
+        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+        model = RandomForestClassifier()
+        model.fit(X_train, y_train)
+        y_pred = model.predict(X_test)
+        acc = accuracy_score(y_test, y_pred)
+        return model, acc, classification_report(y_test, y_pred, output_dict=True)
 
-        uploaded_sensor = st.file_uploader("Upload Sensor Data", type=["csv"], key="sensor_upload")
-        if uploaded_sensor:
-            path = save_uploaded_file(uploaded_sensor, username, "sensor")
-            df_sensor = pd.read_csv(path)
-            st.dataframe(df_sensor.head())
-
-            # Train model on uploaded sensor data
-            try:
-                X = df_sensor[['temp', 'ph', 'do', 'ammonia']]
-                y = df_sensor['mortality']
-                model = RandomForestClassifier()
-                model.fit(X, y)
-                df_sensor["failure_risk"] = model.predict_proba(X)[:,1]
-                st.success("Farm failure risk predicted.")
-                st.dataframe(df_sensor[['ph', 'ammonia', 'failure_risk']].head())
-            except KeyError as e:
-                st.error(f"Missing columns: {e}")
-
-    elif tab == "🧪 Combined Analysis":
-        st.header("🧪 Combined Loan & Water Risk Analysis")
-
-        uploaded_loan = st.file_uploader("Upload Loan Dataset", type=["csv"], key="combo_loan")
-        uploaded_sensor = st.file_uploader("Upload Sensor Dataset", type=["csv"], key="combo_sensor")
-
-        if uploaded_loan and uploaded_sensor:
-            path1 = save_uploaded_file(uploaded_loan, username, "combo_loan")
-            path2 = save_uploaded_file(uploaded_sensor, username, "combo_sensor")
-
-            df_loan = pd.read_csv(path1)
-            df_sensor = pd.read_csv(path2)
+    if section == "📉 Risk Assessment":
+        st.subheader("Upload Risk Assessment Dataset")
+        risk_file = st.file_uploader("Upload CSV for Loan Risk", type=['csv'], key="risk")
+        if risk_file:
+            loan_df = pd.read_csv(risk_file)
+            loan_df.to_csv(f"{user_dir}/loan_data.csv", index=False)
+            st.success("File uploaded and saved!")
+            st.write(loan_df.head())
 
             try:
-                X_loan = df_loan[['loan_amount', 'loan_term', 'emi_paid', 'emi_missed', 'age', 'credit_score', 'income']]
-                y_loan = df_loan['default']
-                model_loan = RandomForestClassifier()
-                model_loan.fit(X_loan, y_loan)
-                loan_probs = model_loan.predict_proba(X_loan)[:,1]
+                features = ['loan_amount', 'loan_term', 'emi_paid', 'emi_missed', 'age', 'credit_score', 'income']
+                model, acc, report = train_model(loan_df, features, 'default')
+                st.write("✅ Model Accuracy:", acc)
+                st.json(report)
+            except Exception as e:
+                st.error(f"Error: {e}")
 
-                X_sensor = df_sensor[['temp', 'ph', 'do', 'ammonia']]
-                y_sensor = df_sensor['mortality']
-                model_sensor = RandomForestClassifier()
-                model_sensor.fit(X_sensor, y_sensor)
-                farm_probs = model_sensor.predict_proba(X_sensor)[:,1]
+    elif section == "🌊 Water Quality":
+        st.subheader("Upload Water Quality Dataset")
+        water_file = st.file_uploader("Upload CSV for Water Quality", type=['csv'], key="water")
+        if water_file:
+            water_df = pd.read_csv(water_file)
+            water_df.to_csv(f"{user_dir}/water_data.csv", index=False)
+            st.success("File uploaded and saved!")
+            st.write(water_df.head())
 
-                df_combined = pd.DataFrame({
-                    "loan_default_prob": loan_probs[:len(farm_probs)],
-                    "farm_failure_prob": farm_probs
-                })
-                df_combined["combined_risk"] = (df_combined["loan_default_prob"] + df_combined["farm_failure_prob"]) / 2
+            try:
+                features = ['temp', 'ph', 'do', 'ammonia']
+                model, acc, report = train_model(water_df, features, 'mortality')
+                st.write("✅ Model Accuracy:", acc)
+                st.json(report)
+            except Exception as e:
+                st.error(f"Error: {e}")
 
-                st.success("Combined risk score generated.")
-                st.dataframe(df_combined.head())
-            except KeyError as e:
-                st.error(f"Missing columns in datasets: {e}")
+    elif section == "🧪 Combined Analysis":
+        st.subheader("Upload Combined Dataset")
+        combined_file = st.file_uploader("Upload Combined Dataset", type=['csv'], key="combined")
+        if combined_file:
+            combined_df = pd.read_csv(combined_file)
+            combined_df.to_csv(f"{user_dir}/combined_data.csv", index=False)
+            st.success("File uploaded and saved!")
+            st.write(combined_df.head())
+
+            try:
+                features = ['loan_amount', 'loan_term', 'emi_paid', 'emi_missed', 
+                            'age', 'credit_score', 'income', 'temp', 'ph', 'do', 'ammonia']
+                model, acc, report = train_model(combined_df, features, 'default')
+                st.write("✅ Combined Model Accuracy:", acc)
+                st.json(report)
+            except Exception as e:
+                st.error(f"Error: {e}")
+else:
+    st.warning("Please login to continue.")
