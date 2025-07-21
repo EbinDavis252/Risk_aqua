@@ -14,21 +14,19 @@ st.set_page_config(layout="wide", page_title="Aqua Risk System")
 # Apply Custom Style
 st.markdown("""
     <style>
-        /* Full App Background */
         .stApp {
             background-image: url("https://images.unsplash.com/photo-1507525428034-b723cf961d3e");
             background-size: cover;
             background-attachment: fixed;
         }
 
-        /* Sidebar Background */
         [data-testid="stSidebar"] {
             background-image: url("https://images.unsplash.com/photo-1519638399535-1b036603ac77");
             background-size: cover;
             background-position: center;
         }
 
-        /* Make text black inside input fields */
+        /* Input fields */
         [data-testid="stSidebar"] input,
         [data-testid="stSidebar"] textarea {
             color: black !important;
@@ -47,7 +45,7 @@ st.markdown("""
             font-weight: 600;
         }
 
-        /* Stylish button */
+        /* Buttons */
         .stButton > button {
             color: white;
             background-color: #006699;
@@ -68,11 +66,21 @@ st.markdown("""
             color: #003366;
         }
 
-        /* Title heading override */
-        h1 {
-            color: #ffffff;
-            text-shadow: 2px 2px #00000088;
+        /* Sidebar App Title (Fix visibility) */
+        [data-testid="stSidebar"] h1, [data-testid="stSidebar"] .css-10trblm {
+            color: #ffffff !important;
+            text-shadow: 1px 1px 3px black;
         }
+
+        /* Login warning text */
+        .stAlert > div {
+            background-color: #ffffcc !important;
+            color: #333 !important;
+            font-weight: bold;
+            border-radius: 5px;
+            padding: 10px;
+        }
+
     </style>
 """, unsafe_allow_html=True)
 
