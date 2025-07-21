@@ -1,204 +1,159 @@
 import streamlit as st
-import pandas as pd
+import os
 import sqlite3
-import os
-import joblib
-import os
-if not os.path.exists("saved_user_data"):
-    os.makedirs("saved_user_data")
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import classification_report
+import pandas as pd
+from PIL import Image
+import base64
 
-# ---------------------------- PAGE SETUP ----------------------------
-st.set_page_config(layout="wide", page_title="Aqua Risk System")
+# ---------- CONFIGURATION ----------
+st.set_page_config(page_title="Aqua Finance Risk App", layout="wide")
 
-st.markdown("""
+# ---------- CUSTOM BACKGROUND ----------
+def set_background(image_file):
+    with open(image_file, "rb") as image:
+        encoded = base64.b64encode(image.read()).decode()
+    page_bg_img = f"""
     <style>
-        .stApp {
-            background-image: url("https://images.unsplash.com/photo-1507525428034-b723cf961d3e");
-            background-size: cover;
-            background-attachment: fixed;
-        }
-        [data-testid="stSidebar"] {
-            background-image: url("https://images.unsplash.com/photo-1519638399535-1b036603ac77");
-            background-size: cover;
-        }
-        .welcome-banner {
-            font-size: 30px;
-            padding: 10px;
-            text-align: center;
-            background-color: #ffffffcc;
-            border-radius: 10px;
-            font-weight: bold;
-            color: #003366;
-        }
-        .stAlert > div {
-            background-color: #ffffcc !important;
-            color: #333 !important;
-            font-weight: bold;
-        }
+    [data-testid="stApp"] {{
+        background-image: url("data:image/png;base64,{encoded}");
+        background-size: cover;
+        background-position: center;
+        background-attachment: fixed;
+    }}
     </style>
-""", unsafe_allow_html=True)
+    """
+    st.markdown(page_bg_img, unsafe_allow_html=True)
 
-# ---------------------------- DB SETUP ----------------------------
-conn = sqlite3.connect("users.db", check_same_thread=False)
-cursor = conn.cursor()
+set_background("assets/background.jpg")
 
-cursor.execute('''
-    CREATE TABLE IF NOT EXISTS users (
-        username TEXT PRIMARY KEY,
-        password TEXT
-    )
-''')
+# ---------- DATABASE SETUP ----------
+os.makedirs("saved_user_data", exist_ok=True)
 
-cursor.execute('''
-    CREATE TABLE IF NOT EXISTS feedback (
-        username TEXT,
-        comment TEXT,
-        submitted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )
-''')
+conn_users = sqlite3.connect("users.db", check_same_thread=False)
+conn_feedback = sqlite3.connect("feedback_data.db", check_same_thread=False)
+cursor_users = conn_users.cursor()
+cursor_feedback = conn_feedback.cursor()
 
-conn.commit()
+cursor_users.execute("""CREATE TABLE IF NOT EXISTS users (
+    username TEXT PRIMARY KEY,
+    password TEXT)""")
 
-if not os.path.exists("saved_user_data"):
-    os.makedirs("saved_user_data")
+cursor_feedback.execute("""CREATE TABLE IF NOT EXISTS feedback (
+    username TEXT,
+    comment TEXT)""")
 
-# ---------------------------- AUTH ----------------------------
-st.sidebar.image("https://upload.wikimedia.org/wikipedia/commons/3/3f/Water_icon.svg", width=80)
-st.sidebar.title("🌊 Aqua Finance Risk App")
+conn_users.commit()
+conn_feedback.commit()
 
-auth_option = st.sidebar.selectbox("🔐 Login / Register", ["Login", "Register"])
-username_input = st.sidebar.text_input("👤 Username")
-password_input = st.sidebar.text_input("🔒 Password", type="password")
+# ---------- SESSION STATE ----------
+if "logged_in" not in st.session_state:
+    st.session_state.logged_in = False
+if "username" not in st.session_state:
+    st.session_state.username = ""
 
-def register_user():
-    cursor.execute("SELECT * FROM users WHERE username=?", (username_input,))
-    if cursor.fetchone():
-        st.sidebar.error("Username already exists.")
-    else:
-        cursor.execute("INSERT INTO users VALUES (?,?)", (username_input, password_input))
-        conn.commit()
-        st.sidebar.success("✅ Registered successfully. Please log in.")
+# ---------- LOGIN & REGISTER ----------
+def login_register():
+    st.sidebar.title("🔐 Login / Register")
 
-def login_user():
-    cursor.execute("SELECT * FROM users WHERE username=? AND password=?", (username_input, password_input))
-    return cursor.fetchone() is not None
+    choice = st.sidebar.selectbox("Login/Register", ["Login", "Register"])
+    username = st.sidebar.text_input("Username")
+    password = st.sidebar.text_input("Password", type="password")
 
-if auth_option == "Register":
-    if st.sidebar.button("Register"):
-        register_user()
-    st.stop()
+    if st.sidebar.button("Continue"):
+        if choice == "Register":
+            cursor_users.execute("SELECT * FROM users WHERE username=?", (username,))
+            if cursor_users.fetchone():
+                st.sidebar.warning("User already exists!")
+            else:
+                cursor_users.execute("INSERT INTO users (username, password) VALUES (?, ?)", (username, password))
+                conn_users.commit()
+                st.sidebar.success("Registered Successfully!")
+        elif choice == "Login":
+            cursor_users.execute("SELECT * FROM users WHERE username=? AND password=?", (username, password))
+            if cursor_users.fetchone():
+                st.session_state.logged_in = True
+                st.session_state.username = username
+                st.success(f"👋 Welcome, {username}!")
+            else:
+                st.sidebar.error("Incorrect username or password!")
 
-if not login_user():
-    st.sidebar.warning("Login to Continue")
-    st.stop()
-
-username = st.text_input("Username")
-password = st.text_input("Password", type="password")
-
-if st.button("Login"):
-    if login_user(username, password):  # <-- This checks if login is correct
-        st.session_state['username'] = username  # <-- Save username AFTER successful login
-        st.success(f"Welcome, {username}!")
-    else:
-        st.error("Invalid username or password")
-
-
-# ---------------------------- SIDEBAR NAV ----------------------------
-menu = st.sidebar.radio("📁 Navigation", [
-    "Upload Data", "Dashboard", "Prediction", "Feedback", "Admin Panel"
-])
-
-st.markdown(f"<div class='welcome-banner'>👋 Welcome, {username}!</div>", unsafe_allow_html=True)
-st.markdown("---")
-
-# ---------------------------- UTILS ----------------------------
-def save_uploaded_file(uploaded_file, name):
+# ---------- FILE UPLOAD ----------
+def upload_data():
+    st.header("📤 Upload Data")
+    uploaded_file = st.file_uploader("Choose a CSV file", type=["csv"])
     if uploaded_file:
         df = pd.read_csv(uploaded_file)
-        file_path = f"saved_user_data/{username}_{name}.csv"
-        df.to_csv(file_path, index=False)
-        return df
-    elif os.path.exists(f"saved_user_data/{username}_{name}.csv"):
-        return pd.read_csv(f"saved_user_data/{username}_{name}.csv")
-    return None
+        filepath = f"saved_user_data/{st.session_state.username}_data.csv"
+        df.to_csv(filepath, index=False)
+        st.success(f"File saved as: `{filepath}`")
+        st.dataframe(df)
 
-# ---------------------------- 1. UPLOAD DATA ----------------------------
-if menu == "Upload Data":
-    st.header("📤 Upload Your Datasets")
-
-    col1, col2 = st.columns(2)
-    with col1:
-        risk_file = st.file_uploader("Upload Risk Dataset", type=["csv"], key="risk")
-        if risk_file:
-            save_uploaded_file(risk_file, "risk")
-            st.success("✅ Risk dataset saved.")
-    with col2:
-        water_file = st.file_uploader("Upload Water Quality Dataset", type=["csv"], key="water")
-        if water_file:
-            save_uploaded_file(water_file, "water")
-            st.success("✅ Water quality dataset saved.")
-
-# ---------------------------- 2. DASHBOARD ----------------------------
-elif menu == "Dashboard":
+# ---------- DASHBOARD ----------
+def dashboard():
     st.header("📊 Dashboard")
+    filepath = f"saved_user_data/{st.session_state.username}_data.csv"
+    if os.path.exists(filepath):
+        df = pd.read_csv(filepath)
+        st.subheader("Data Overview")
+        st.dataframe(df.head())
 
-    risk_df = save_uploaded_file(None, "risk")
-    water_df = save_uploaded_file(None, "water")
-
-    if risk_df is not None:
-        st.subheader("📌 Risk Data Overview")
-        st.dataframe(risk_df.head())
-        if 'loan_amount' in risk_df.columns and 'default' in risk_df.columns:
-            st.bar_chart(risk_df.groupby('default')['loan_amount'].mean())
-
-    if water_df is not None:
-        st.subheader("💧 Water Quality Overview")
-        st.dataframe(water_df.head())
-        if {'pH', 'ammonia', 'dissolved_oxygen'}.issubset(water_df.columns):
-            st.line_chart(water_df[['pH', 'ammonia', 'dissolved_oxygen']])
-
-# ---------------------------- 3. PREDICTION ----------------------------
-elif menu == "Prediction":
-    st.header("🤖 AI-Based Prediction")
-
-    risk_df = save_uploaded_file(None, "risk")
-    if risk_df is not None and 'default' in risk_df.columns:
-        X = risk_df.drop('default', axis=1).select_dtypes(include='number')
-        y = risk_df['default']
-        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2)
-        model = RandomForestClassifier().fit(X_train, y_train)
-        preds = model.predict(X_test)
-
-        st.success("✅ Model Trained Successfully!")
-        st.text("📄 Classification Report:")
-        st.text(classification_report(y_test, preds))
-        joblib.dump(model, f"saved_user_data/{username}_risk_model.pkl")
+        if "loan_default" in df.columns:
+            st.bar_chart(df["loan_default"].value_counts())
+        if "ph" in df.columns:
+            st.line_chart(df["ph"])
     else:
-        st.warning("Please upload a valid Risk dataset with 'default' column.")
+        st.warning("No uploaded data found.")
 
-# ---------------------------- 4. FEEDBACK ----------------------------
-elif menu == "Feedback":
-    st.header("📝 Feedback")
-    comment = st.text_area("💬 Share your feedback about the app:")
+# ---------- PREDICTION ----------
+def prediction():
+    st.header("🤖 Risk Prediction")
+    st.write("Here you can integrate your ML models.")
+    st.info("Model loading and prediction code goes here.")
+
+# ---------- FEEDBACK ----------
+def feedback():
+    st.header("💬 Feedback")
+    comment = st.text_area("Leave your feedback")
     if st.button("Submit Feedback"):
-        cursor.execute("INSERT INTO feedback (username, comment) VALUES (?, ?)", (username, comment))
-        conn.commit()
-        st.success("✅ Feedback submitted. Thank you!")
+        cursor_feedback.execute("INSERT INTO feedback (username, comment) VALUES (?, ?)", (st.session_state.username, comment))
+        conn_feedback.commit()
+        st.success("Thanks for your feedback!")
 
-# ---------------------------- 5. ADMIN PANEL ----------------------------
-elif menu == "Admin Panel":
-    if username != "admin":
-        st.warning("⛔ Access Denied: Admins Only")
+# ---------- ADMIN PANEL ----------
+def admin_panel():
+    st.header("🛡️ Admin Panel")
+    admin_username = "admin"
+    if st.session_state.username == admin_username:
+        st.subheader("All Users")
+        users = cursor_users.execute("SELECT * FROM users").fetchall()
+        st.table(pd.DataFrame(users, columns=["Username", "Password"]))
+
+        st.subheader("Feedback")
+        feedbacks = cursor_feedback.execute("SELECT * FROM feedback").fetchall()
+        st.table(pd.DataFrame(feedbacks, columns=["Username", "Comment"]))
     else:
-        st.header("🛠 Admin Panel")
+        st.error("Access Denied. Admins only.")
 
-        st.subheader("👥 Registered Users")
-        users = pd.read_sql("SELECT * FROM users", conn)
-        st.dataframe(users)
+# ---------- MAIN ----------
+def main():
+    if not st.session_state.logged_in:
+        login_register()
+    else:
+        st.sidebar.markdown("---")
+        st.sidebar.success(f"Logged in as `{st.session_state.username}`")
 
-        st.subheader("💬 Feedbacks")
-        feedbacks = pd.read_sql("SELECT * FROM feedback", conn)
-        st.dataframe(feedbacks)
+        tab = st.sidebar.radio("Navigation", ["Upload Data", "Dashboard", "Prediction", "Feedback", "Admin Panel"])
+
+        if tab == "Upload Data":
+            upload_data()
+        elif tab == "Dashboard":
+            dashboard()
+        elif tab == "Prediction":
+            prediction()
+        elif tab == "Feedback":
+            feedback()
+        elif tab == "Admin Panel":
+            admin_panel()
+
+if __name__ == "__main__":
+    main()
