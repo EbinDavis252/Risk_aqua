@@ -3,6 +3,9 @@ import pandas as pd
 import sqlite3
 import os
 import joblib
+import os
+if not os.path.exists("saved_user_data"):
+    os.makedirs("saved_user_data")
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import classification_report
@@ -92,8 +95,16 @@ if not login_user():
     st.sidebar.warning("Login to Continue")
     st.stop()
 
-st.session_state['username'] = username_input
-username = st.session_state['username']
+username = st.text_input("Username")
+password = st.text_input("Password", type="password")
+
+if st.button("Login"):
+    if login_user(username, password):  # <-- This checks if login is correct
+        st.session_state['username'] = username  # <-- Save username AFTER successful login
+        st.success(f"Welcome, {username}!")
+    else:
+        st.error("Invalid username or password")
+
 
 # ---------------------------- SIDEBAR NAV ----------------------------
 menu = st.sidebar.radio("📁 Navigation", [
